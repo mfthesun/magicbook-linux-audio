@@ -1,0 +1,98 @@
+From 5f48d4b358df378a53e880f86ed3f61ce538ebc6 Mon Sep 17 00:00:00 2001
+From: Denis Yakovlev <mfthesun@vivaldi.net>
+Date: Sun, 27 Sep 2026 20:52:30 +0000
+Subject: [PATCH] ALSA: hda/realtek: Enable bass speakers on HONOR MagicBook
+ Pro 16 2024
+
+The HONOR MagicBook Pro 16 2024 (DRA-XX, board M1020, ALC256, SSID
+1ee7:204e) has two tweeters and four woofers. The BIOS only configures
+the tweeter pin 0x1b; the woofer pin 0x14 is left at 0x411111f0, so the
+woofers stay silent.
+
+Pin 0x14 can only be connected to DAC 0x02, while the parser puts the
+tweeters on DAC 0x03, which turns the second speaker pair into channels
+3/4 that a stereo stream never reaches (and SOF on Meteor Lake only
+exposes a 2-channel HDA analog PCM). Configure 0x14 as an internal
+speaker and restrict 0x1b to DAC 0x02, so both speaker pairs play the
+stereo stream with a shared volume control, as on Windows.
+
+Tested on DRA-XX with SOF (sof-hda-generic-2ch.tplg): woofers and
+tweeters play together, headphone auto-mute and the DMICs keep
+working.
+
+Assisted-by: LLM
+Signed-off-by: Denis Yakovlev <mfthesun@vivaldi.net>
+---
+The fix and this changelog were drafted with an AI assistant (Claude).
+I reviewed the change and tested the same fix on the DRA-XX hardware
+(applied to the Ubuntu 7.0.0-34 kernel sources): the woofers play
+(toggling the new "Bass Speaker" switch audibly removes the bass),
+headphone auto-mute and the internal DMICs keep working. Before the fix, pin 0x14
+was confirmed as
+the woofer output with snd-hda-intel plus a hda-jack-retask override.
+
+ sound/hda/codecs/realtek/alc269.c | 27 +++++++++++++++++++++++++++
+ 1 file changed, 27 insertions(+)
+
+diff --git a/sound/hda/codecs/realtek/alc269.c b/sound/hda/codecs/realtek/alc269.c
+index 5127a111..371550bb 100644
+--- a/sound/hda/codecs/realtek/alc269.c
++++ b/sound/hda/codecs/realtek/alc269.c
+@@ -2721,6 +2721,17 @@ static void alc294_fixup_bass_speaker_15(struct hda_codec *codec,
+ 	}
+ }
+ 
++/* route Speaker (0x1b) to DAC 0x02, the only DAC reachable from Bass Speaker (0x14) */
++static void alc256_fixup_honor_dra_xx_share_dac(struct hda_codec *codec,
++						const struct hda_fixup *fix, int action)
++{
++	if (action == HDA_FIXUP_ACT_PRE_PROBE) {
++		static const hda_nid_t conn[] = { 0x02 };
++
++		snd_hda_override_conn_list(codec, 0x1b, ARRAY_SIZE(conn), conn);
++	}
++}
++
+ /* Hook to update amp GPIO4 for automute */
+ static void alc280_hp_gpio4_automute_hook(struct hda_codec *codec,
+ 					  struct hda_jack_callback *jack)
+@@ -4374,6 +4385,8 @@ enum {
+ 	ALC245_FIXUP_CS35L41_I2C_2_MUTE_LED,
+ 	ALC236_FIXUP_HP_DMIC,
+ 	ALC256_FIXUP_HONOR_MRB_XXX_M1020_AUDIO,
++	ALC256_FIXUP_HONOR_DRA_XX_SPEAKERS,
++	ALC256_FIXUP_HONOR_DRA_XX_SHARE_DAC,
+ 	ALC245_FIXUP_HP_ENVY_X360_15_FH0XXX,
+ 	ALC287_FIXUP_ACER_MICMUTE_LED,
+ 	ALC236_FIXUP_DELL_HP_POP_NOISE,
+@@ -7072,6 +7085,19 @@ static const struct hda_fixup alc269_fixups[] = {
+ 			{ }
+ 		}
+ 	},
++	[ALC256_FIXUP_HONOR_DRA_XX_SPEAKERS] = {
++		.type = HDA_FIXUP_PINS,
++		.v.pins = (const struct hda_pintbl[]) {
++			{ 0x14, 0x90170111 }, /* bass speakers */
++			{ }
++		},
++		.chained = true,
++		.chain_id = ALC256_FIXUP_HONOR_DRA_XX_SHARE_DAC
++	},
++	[ALC256_FIXUP_HONOR_DRA_XX_SHARE_DAC] = {
++		.type = HDA_FIXUP_FUNC,
++		.v.func = alc256_fixup_honor_dra_xx_share_dac,
++	},
+ 	[ALC245_FIXUP_HP_ENVY_X360_15_FH0XXX] = {
+ 		.type = HDA_FIXUP_FUNC,
+ 		.v.func = cs35l41_fixup_i2c_two,
+@@ -8345,6 +8371,7 @@ static const struct hda_quirk alc269_fixup_tbl[] = {
+ 	SND_PCI_QUIRK(0x1e50, 0x7007, "Positivo DN50E", ALC269_FIXUP_LIMIT_INT_MIC_BOOST),
+ 	SND_PCI_QUIRK(0x1e50, 0x7036, "Acer Gadget E10 ETBook", ALC233_FIXUP_WUJIE_SPEAKERS),
+ 	SND_PCI_QUIRK(0x1e50, 0x7038, "Positivo DN140", ALC269_FIXUP_LIMIT_INT_MIC_BOOST),
++	SND_PCI_QUIRK(0x1ee7, 0x204e, "HONOR DRA-XX M1020", ALC256_FIXUP_HONOR_DRA_XX_SPEAKERS),
+ 	SND_PCI_QUIRK(0x1ee7, 0x2078, "HONOR BRB-X M1010", ALC2XX_FIXUP_HEADSET_MIC),
+ 	SND_PCI_QUIRK(0x1ee7, 0x2081, "HONOR MRB-XXX M1020", ALC256_FIXUP_HONOR_MRB_XXX_M1020_AUDIO),
+ 	SND_PCI_QUIRK(0x1f4c, 0xb020, "Minisforum AI X1 Pro",
+-- 
+2.43.0
+

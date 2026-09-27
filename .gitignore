@@ -1,0 +1,6 @@
+# proprietary driver files and full hardware dumps - keep local only
+research/windows-driver/raw/
+research/hardware/raw/
+**/out/
+easyeffects-presets/tools/deps/
+*.dat
