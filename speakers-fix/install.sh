@@ -5,7 +5,7 @@
 # Secure Boot: the module is signed with a MOK key (DKMS key or our own), enrollment is requested once.
 set -euo pipefail
 HERE="$(cd "$(dirname "$0")" && pwd)"
-PKG=honor-dra-fix; VER=2.0; KREL="$(uname -r)"
+PKG=honor-dra-fix; VER=2.2; KREL="$(uname -r)"
 FORCE=0; SIGN_MODE=auto   # auto | yes | no
 for a in "$@"; do case "$a" in
   --force) FORCE=1;; --sign) SIGN_MODE=yes;; --no-sign) SIGN_MODE=no;;
@@ -59,8 +59,13 @@ sudo rm -f /etc/modprobe.d/honor-woofers-test.conf /etc/modprobe.d/honor-woofers
 KEYPUB=""; KEYPRIV=""
 if command -v dkms >/dev/null; then
   echo "== DKMS mode"
-  sudo dkms remove "$PKG/$VER" --all >/dev/null 2>&1 || true
-  sudo rm -rf "/usr/src/$PKG-$VER"; sudo mkdir -p "/usr/src/$PKG-$VER"
+  # убрать все ранее установленные версии этого пакета (иначе 2.0 и 2.1 будут
+  # бороться за один и тот же файл модуля)
+  for v in $(dkms status "$PKG" 2>/dev/null | sed -n "s|^$PKG/\([^,]*\),.*|\1|p" | sort -u); do
+    echo "   удаляю прежнюю версию $PKG/$v"
+    sudo dkms remove "$PKG/$v" --all >/dev/null 2>&1 || true
+  done
+  sudo rm -rf /usr/src/"$PKG"-*; sudo mkdir -p "/usr/src/$PKG-$VER"
   sudo cp "$HERE/build.sh" "$HERE/honor_dra_fix.py" "$HERE/dkms.conf" "/usr/src/$PKG-$VER/"
   sudo dkms install "$PKG/$VER" -k "$KREL"
   for k in /var/lib/dkms/mok.pub /var/lib/shim-signed/mok/MOK.der; do [ -f "$k" ] && { KEYPUB=$k; break; }; done

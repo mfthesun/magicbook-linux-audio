@@ -1,0 +1,70 @@
+From 9a4d0b9b9a32139c2c53af2b5d8218569d390559 Mon Sep 17 00:00:00 2001
+From: Denis Yakovlev <mfthesun@vivaldi.net>
+Date: Sat, 3 Oct 2026 00:24:38 +0300
+Subject: [PATCH] ALSA: hda/realtek: Enable headset mic on HONOR MagicBook Pro
+ 16 2024
+
+The HONOR MagicBook Pro 16 2024 (DRA-XX, board M1020, ALC256, SSID
+1ee7:204e) has a combined 3.5 mm headphone/microphone jack. The BIOS
+leaves the headset mic pin 0x19 at 0x411111f0, so the codec parser
+builds no capture path for it, and it leaves the jack switch
+(coefficient 0x45) in the TRS state, which cuts the microphone contact
+off from the codec. A wired headset microphone therefore records
+nothing.
+
+Configure 0x19 as a headset microphone (0x03a1113c, "headset mic
+without its own jack detect"), the same value already used for the
+sibling M1020 board (HONOR MRB-XXX) and by the VAIO quirks, and chain
+to the generic headset mode handler, which detects the CTIA/OMTP
+headset type on every jack event and programs the jack switch
+accordingly. Pin 0x1a is left untouched: there is no evidence that it
+is wired on this board.
+
+Assisted-by: LLM
+Signed-off-by: Denis Yakovlev <mfthesun@vivaldi.net>
+---
+Tested on a HONOR MagicBook Pro 16 2024 (DRA-XX), Ubuntu 7.0.0-34, using
+an out-of-tree build of this change, with wired Apple EarPods (CTIA): the
+microphone records after several cold boots with the headset inserted and
+after hot-plugging; without the change the analog capture is digital
+silence. The headset type is detected as CTIA (coef 0x45 ends up at
+0xd489). The speakers (including the "Bass Speaker" control from the
+speaker fix) and wired headphone playback still work. OMTP headsets were
+not tested (no hardware).
+
+ sound/hda/codecs/realtek/alc269.c | 8 ++++++++
+ 1 file changed, 8 insertions(+)
+
+diff --git a/sound/hda/codecs/realtek/alc269.c b/sound/hda/codecs/realtek/alc269.c
+index 67b9f41..4e22d63 100644
+--- a/sound/hda/codecs/realtek/alc269.c
++++ b/sound/hda/codecs/realtek/alc269.c
+@@ -4477,6 +4477,7 @@ enum {
+ 	ALC256_FIXUP_HONOR_MRB_XXX_M1020_AUDIO,
+ 	ALC256_FIXUP_HONOR_DRA_XX_SPEAKERS,
+ 	ALC256_FIXUP_HONOR_DRA_XX_SHARE_DAC,
++	ALC256_FIXUP_HONOR_DRA_XX_HEADSET_MODE,
+ 	ALC245_FIXUP_HP_ENVY_X360_15_FH0XXX,
+ 	ALC287_FIXUP_ACER_MICMUTE_LED,
+ 	ALC236_FIXUP_DELL_HP_POP_NOISE,
+@@ -7215,6 +7216,7 @@ static const struct hda_fixup alc269_fixups[] = {
+ 		.type = HDA_FIXUP_PINS,
+ 		.v.pins = (const struct hda_pintbl[]) {
+ 			{ 0x14, 0x90170111 }, /* bass speakers */
++			{ 0x19, 0x03a1113c }, /* headset mic, without its own jack detect */
+ 			{ }
+ 		},
+ 		.chained = true,
+@@ -7223,6 +7225,12 @@ static const struct hda_fixup alc269_fixups[] = {
+ 	[ALC256_FIXUP_HONOR_DRA_XX_SHARE_DAC] = {
+ 		.type = HDA_FIXUP_FUNC,
+ 		.v.func = alc256_fixup_honor_dra_xx_share_dac,
++		.chained = true,
++		.chain_id = ALC256_FIXUP_HONOR_DRA_XX_HEADSET_MODE
++	},
++	[ALC256_FIXUP_HONOR_DRA_XX_HEADSET_MODE] = {
++		.type = HDA_FIXUP_FUNC,
++		.v.func = alc_fixup_headset_mode,
+ 	},
+ 	[ALC245_FIXUP_HP_ENVY_X360_15_FH0XXX] = {
+ 		.type = HDA_FIXUP_FUNC,

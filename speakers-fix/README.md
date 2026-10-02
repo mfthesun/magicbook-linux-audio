@@ -1,12 +1,14 @@
-# HONOR MagicBook Pro 16 2024 (DRA-XX): все 6 динамиков в Linux
+# HONOR MagicBook Pro 16 2024 (DRA-XX): все 6 динамиков и микрофон гарнитуры в Linux
 
-**EN:** On the DRA-XX (ALC256, SSID `1ee7:204e`) the BIOS leaves the woofer pin `0x14` unconfigured, so only the two tweeters play. This fix configures `0x14` as a speaker and routes the tweeter pin `0x1b` to the same DAC (`0x02`), so all six speakers play the stereo stream, as on Windows. `./install.sh` builds the patched Realtek HDA codec module for the running kernel on any distribution (kernel sources are fetched to match; both the ≥ 6.17 and older source layouts are supported), registers it with DKMS when available and signs it for Secure Boot. `./uninstall.sh` reverts. Upstream submission: `patch/`.
+**EN:** On the DRA-XX (ALC256, SSID `1ee7:204e`) the BIOS leaves the woofer pin `0x14` and the headset-mic pin `0x19` unconfigured: only the two tweeters play and the microphone of a wired headset is invisible to the system. This fix configures `0x14` as a speaker, routes the tweeter pin `0x1b` to the same DAC (`0x02`) so all six speakers play the stereo stream, and configures `0x19` as a headset microphone (`0x03a1113c`, the value used by the HONOR MRB-XXX M1020 and VAIO quirks) and enables the kernel's headset mode (CTIA/OMTP auto-detection) for the combo jack, which is what actually connects the microphone to the codec (the BIOS leaves `coef 0x45` in the TRS state). The behaviour is selectable by the `honor_dra_mic` module parameter, see `set-mic-mode.sh`. `./install.sh` builds the patched Realtek HDA codec module for the running kernel on any distribution (kernel sources are fetched to match; both the ≥ 6.17 and older source layouts are supported), registers it with DKMS when available and signs it for Secure Boot. `./uninstall.sh` reverts. Upstream submission: `patch/`.
 
 ## Проблема
 
 Кодек Realtek ALC256 (подсистема `1ee7:204e`). 2 твитера висят на пине `0x1b`, 4 вуфера — на пине `0x14`, который BIOS оставляет неподключённым (`0x411111f0`). Поэтому в Linux играют только твитеры.
 
 Пин `0x14` может брать звук только из DAC `0x02`. Исправление: объявить `0x14` динамиком и посадить `0x1b` на тот же DAC, как в Windows: обе пары динамиков получают одно стерео с общей громкостью. Появляется регулятор «Bass Speaker».
+
+Вторая проблема того же кодека: пин `0x19` — микрофонный контакт разъёма 3,5 мм — BIOS тоже оставляет отключённым (`0x411111f0`). Поэтому микрофон проводной гарнитуры система не видит вообще: аналоговый вход пишет цифровую тишину, источников «Headset Mic» не появляется. Исправление: объявить `0x19` входом микрофона гарнитуры — значение `0x03a1113c` («headset mic, without its own jack detect»), то же, что применяют фиксапы HONOR MRB-XXX M1020 и VAIO. Пин `0x1a` (второй вход) не трогаем: данных о том, что он распаян на этой плате, нет.
 
 ## Установка (любой дистрибутив)
 
@@ -36,9 +38,39 @@ amixer -c0 scontrols | grep -i "bass speaker"
 amixer -c0 sset "Bass Speaker" off; sleep 5; amixer -c0 sset "Bass Speaker" on
 ```
 
+Микрофон гарнитуры (гарнитура вставлена в разъём):
+
+```bash
+arecord -l                                   # должна появиться карта с аналоговым входом
+amixer -c0 scontrols | grep -i headset       # вход микрофона гарнитуры
+arecord -D hw:0,0 -f S16_LE -r 48000 -c 2 -d 5 /tmp/mic.wav   # говорите в микрофон
+```
+
+Одна тонкость: EasyEffects и PipeWire держат устройства открытыми, поэтому во время записи остановите пресет EasyEffects, если захват не открывается.
+
+## Режимы микрофона гарнитуры (DKMS 2.2)
+
+Одного объявления пина `0x19` мало: BIOS оставляет аналоговый ключ разъёма (`coef 0x45 = 0xc089`) в режиме «TRS», и микрофон гарнитуры отрезан. Измерено на железе (02.10.2026, EarPods, CTIA): `coef 0x45 = 0xd489` даёт голос (разница речь/тишина 33-36 дБ), `0xc489` (TRS) даёт ноль, а `coef 0x1b` на результат не влияет. Режим выбирается параметром модуля `honor_dra_mic` (по умолчанию 4). Режимы 1 и 4 проверены на железе 03.10.2026: холодный старт и горячая вставка, SNR 29-34 дБ:
+
+| Значение | Что делает |
+|---|---|
+| `0` | только пины; микрофон не работает (для сравнения) |
+| `1` | штатный headset mode ядра с подстраховкой по пину `0x19` (парсер сам выставляет пин, подстраховка не нужна) |
+| `2` | принудительно CTIA при инициализации (`0x45=0xd489`, `0x1b=0x0e6b`); запасной вариант |
+| `3` | как фикс HONOR BRB-X (аппаратное автопереключение через `coef 0x45`) |
+| `4` | штатный headset mode ядра: тип гарнитуры (CTIA/OMTP) определяется при каждом событии джека; тот же код, что в апстрим-патче (по умолчанию) |
+
+```bash
+./set-mic-mode.sh 1        # выбрать режим (после этого перезагрузка)
+./set-mic-mode.sh --status # что в конфиге и что загружено
+sudo dmesg | grep "HONOR DRA-XX"   # режим и headset_mic_pin, которые увидел драйвер
+```
+
 ## Апстрим
 
-`patch/0001-ALSA-hda-realtek-Enable-bass-speakers-on-HONOR-Magic.patch` — патч для основной ветки ядра (рассылка linux-sound, мейнтейнер Takashi Iwai). Когда он попадёт в ядро вашего дистрибутива, выполните `./uninstall.sh`.
+`patch/0001-ALSA-hda-realtek-Enable-bass-speakers-on-HONOR-Magic.patch` — патч вуферов для основной ветки ядра (рассылка linux-sound, мейнтейнер Takashi Iwai). **Принят 28.09.2026 в ветку `for-next` дерева sound (коммит `1e3e378d63be`)**; в ядре дистрибутива появится с ближайшим релизом.
+
+`patch/0002-...-headset-mic-...patch` — follow-up с микрофоном гарнитуры, отправляется поверх уже принятого патча. Когда оба попадут в ядро вашего дистрибутива, выполните `./uninstall.sh`.
 
 ## Файлы
 
@@ -47,5 +79,6 @@ amixer -c0 sset "Bass Speaker" off; sleep 5; amixer -c0 sset "Bass Speaker" on
 | `honor_dra_fix.py` | вносит исправление в исходник драйвера (любой версии ядра) |
 | `build.sh` | скачивает исходники под ядро, патчит, собирает модуль |
 | `install.sh` / `uninstall.sh` | установка (DKMS или вручную) и откат |
-| `dkms.conf` | описание DKMS-пакета `honor-dra-fix/2.0` |
+| `dkms.conf` | описание DKMS-пакета `honor-dra-fix/2.2` |
+| `set-mic-mode.sh` | выбор режима микрофона гарнитуры (`honor_dra_mic`) |
 | `patch/` | патч для отправки в ядро |
