@@ -15,7 +15,8 @@ static int honor_dra_share_dac = 1;
 module_param(honor_dra_share_dac, int, 0444);
 MODULE_PARM_DESC(honor_dra_share_dac, "HONOR DRA-XX: 1=route Speaker 0x1b to DAC 0x02 (default), 0=parser default (test only)");
 
-/* HONOR DRA-XX: route Speaker (0x1b) to DAC 0x02, the only DAC reachable from Bass Speaker (0x14) */
+/* HONOR DRA-XX: route the bottom speakers (0x1b) to DAC 0x02, the only DAC reachable from the tweeter pin 0x14.
+ * Has no effect in practice (0x1b is on DAC 0x02 anyway); dropped upstream. */
 static void alc256_fixup_honor_dra_xx_share_dac(struct hda_codec *codec,
 \t\t\t\t\t\tconst struct hda_fixup *fix, int action)
 {
@@ -80,7 +81,7 @@ static void alc256_fixup_honor_dra_xx_headset(struct hda_codec *codec,
 FIXUPS = """\t[ALC256_FIXUP_HONOR_DRA_XX_SPEAKERS] = {
 \t\t.type = HDA_FIXUP_PINS,
 \t\t.v.pins = (const struct hda_pintbl[]) {
-\t\t\t{ 0x14, 0x90170111 }, /* bass speakers */
+\t\t\t{ 0x14, 0x90170111 }, /* tweeters (top speakers) */
 \t\t\t{ 0x19, 0x03a1113c }, /* headset mic, without its own jack detect */
 \t\t\t{ }
 \t\t},

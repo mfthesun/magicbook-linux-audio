@@ -6,3 +6,4 @@ easyeffects-presets/tools/deps/
 *.dat
 __pycache__/
 headset-mic/runs/
+speakers-fix/runs/
