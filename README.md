@@ -19,7 +19,7 @@
 |---|---|
 | верхние динамики (пин `0x14`) | принят: коммит `1e3e378d63be` в `for-next` дерева sound, 28.09.2026 ([тред](https://lore.kernel.org/all/20260927210455.13938-1-mfthesun@vivaldi.net/)) |
 | микрофон гарнитуры (пин `0x19` + headset mode) | принят: коммит `af53cdc10` в `for-next`, 04.10.2026 ([тред](https://lore.kernel.org/linux-sound/20261003133325.97507-1-mfthesun@vivaldi.net/)) |
-| исправление первого патча: лишняя привязка к DAC, перепутанные роли динамиков | отправлен 05.10.2026 ([тред](https://lore.kernel.org/linux-sound/20261005203836.11074-1-mfthesun@vivaldi.net/)), ждёт ответа |
+| исправление первого патча: лишняя привязка к DAC, перепутанные роли динамиков | принят: коммит `5cc1749b5` в `for-next`, 06.10.2026 ([тред](https://lore.kernel.org/linux-sound/20261005203836.11074-1-mfthesun@vivaldi.net/)) |
 
 Когда исправления попадут в ядро вашего дистрибутива, DKMS-модуль не нужен: `speakers-fix/uninstall.sh`.
 
